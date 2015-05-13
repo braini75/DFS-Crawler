@@ -44,7 +44,7 @@ class dfsIndex {
 		$this->config = $config;
 		
 		// DFS Index Parameter
-		$this->config["indexDirs"]	= array ('/share/HDA_DATA/*');
+		$this->config["indexDirs"]	= array ('/media/sf_E_DRIVE/*');
 		//$this->config["indexDirs"]	= array ('/share/HDA_DATA/Multimedia/Bilder/privat/2005/*');
 		$this->config["blacklist"]	= 'dfsindex_blacklist.linux.txt';
 		
@@ -168,9 +168,11 @@ class dfsIndex {
 		
 		//ToDo: sqlite Handling
 		
-		return 1;
+		//return 1;
 		
-		$table_name=$this-> config["mip.work"]["global_table"];
+
+		
+		$table_name=$this-> config["dfsindex"]["global_table"];
 		$dfs_db=$this-> dfs_db;
 		$dbhandle = $this->ecmDBhandle;
 		
@@ -207,11 +209,15 @@ class dfsIndex {
 			'last_set'	  => date('Y-m-d H:i:s')
 		);				
 		
+		
+		
 		// Check if value exist and needs to be updated
 		$dbhandle-> selectKeyVal($table_name,$global_keyArr);
-		if ($dbhandle-> countLastResults() == 0){
+		if (!$dbhandle->ReadRow()){
+			
 			$this->ecmDBhandle->insertKeyVal($table_name, $StatsData);
 		} else {
+
 			$this->ecmDBhandle->updateKeyVal($table_name, $StatsData, $global_keyArr);
 		}		
 	}
@@ -220,7 +226,7 @@ class dfsIndex {
 	 * The whole table will be truncated (caution: All data will be lost!)
 	 */
 	function emptyIndexTable(){
-		//$this->ecmDBhandle->trucateTable($this->dfs_db-> table_name);
+		$this->ecmDBhandle->truncateTable($this->dfs_db-> table_name);
 	}
 		
 }

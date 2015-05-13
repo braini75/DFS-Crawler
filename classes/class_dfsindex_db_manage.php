@@ -57,24 +57,41 @@ class dfsindex_db_manage{
      * @param list $headerCols
      */
     function findFiles($searchValues,$headerCols){
-    	$fileStr=mysql_escape_string($this->replaceWildcard($searchValues['file']));
+    	if (!is_array($searchValues)) return false;
+    	reset($searchValues);
+    	print_r($searchValues);
     	
-    	$pathStr=mysql_escape_string($this->replaceWildcard($searchValues['path_filter'])); //not yet required -> always do an "%path_filter%" - search
+    	$sql=$headerCols." FROM ".$this->table_name; //." WHERE dir_name LIKE '%".$pathStr."%' and file_name LIKE '".$fileStr."'";
     	
-    	$sql=$headerCols." from ".$this->table_name." WHERE dir_name LIKE '%".$pathStr."%' and file_name LIKE '".$fileStr."'";
+    	$sql   .= ' WHERE ';
+    	$komma = NULL;
+    	foreach ($searchValues as $key=>$value)  {
+    		$sign= " = "; 			//other fields should exact
+    		
+    		if (strstr($key, "name")){
+    			$sign=" LIKE ";		//names will searched with LIKE
+    			$value=$this->replaceWildcard($value); 	
+    		}
+    		$value_new = $sign.'\''. SQLite3::escapeString($value).'\'';
+    		$sql   .= $komma . $key . $value_new;
+    		$komma = ' AND ';
+    	}
+    	
+    	
     	return $sql;    	
     }
     
 
     function findDuplicateFiles($dup){    	
-    	$sql="file_name,file_size, count(1) AS count from ".$this->table_name." GROUP BY file_name,file_size HAVING count>".$dup." ORDER BY count desc";
+    	//$sql="file_name,file_size, count(1) AS count from ".$this->table_name." GROUP BY file_name,file_size HAVING count>".$dup." ORDER BY count desc";
+    	$sql="file_id,file_name,file_size, count(1) AS count from ".$this->table_name." GROUP BY file_name,file_size ORDER BY count desc";
     	return $sql;    	
     }
     
     
     function checkPathExist($searchValues){
     	$pathStr=mysql_escape_string($this->replaceWildcard($searchValues['path_filter'])); //not yet required -> always do an "%path_filter%" - search    	
-    	$sql=" from ".$this->table_name." WHERE dir_name LIKE '%".$pathStr."%'";
+    	$sql=" dir_name from ".$this->table_name." WHERE dir_name LIKE '%".$pathStr."%'";
     	return $sql;
     }
     

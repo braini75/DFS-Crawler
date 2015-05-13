@@ -6,7 +6,7 @@
  * @author  Thomas Koch
  * @param array $_REQUEST['parx']
  *   'file' :       file name pattern
-     'path_filter' : directory pattern
+     'dir_name' : directory pattern
  * @param $_REQUEST['action']
  *   ['search']
  *   'duplicate'
@@ -23,9 +23,10 @@
 
 require_once('classes/class_dfsindex_db_manage.php');
 require_once('function_lib.php');
-require_once(dirname(__FILE__).'/../../classes/class_form.inc');
-require_once(dirname(__FILE__).'/../../classes/tableViewRaw.inc');
-require_once(dirname(__FILE__).'/../../classes/class_tableView.inc');
+require_once('helper-classes/class_form.inc');
+require_once('helper-classes/tableViewRaw.inc');
+require_once('helper-classes/class_tableView.inc');
+require_once('classes/class_db.php');
 
 
 
@@ -56,8 +57,8 @@ class tableView_dfs extends tableView_abs {
 				case 'file_size':
 					$val='<span style="text-align: right;">'.humanFileSize($rowData[$key]).'</span>';							
 					break;
-				case 'count':
-					$val='<a href=p.php?mod=dfsindex/search&parx[file_name]="'.$rowData['file_name'].'"&go=1>'.$rowData[$key].'</a>';
+				case 'count':					
+					$val='<a href=index.php?parx[file_name]='.$rowData['file_name'].'&parx[file_size]='.$rowData['file_size'].'&go=1&action=analyze>'.$rowData[$key].'</a>';								
 					break;
 				default:
 					$val = $rowData[$key];
@@ -79,13 +80,13 @@ class dfs_forms{
      * 
      */
 	VAR $form_attr=array(
-        'file'=>           	array('name'=> 'Dateiname',               'object'=>'text', 'view'=>0, 'notes'=>'Suchstring des Dateinamens, nutze "*" als Wildcard','allow_sort' =>1, 'required'=>1 ),
-        //'path_filter'=>     array('name'=> 'Pfadeinschr&auml;nkung',  'object'=>'ajaxselect', 'view'=>0, 'notes'=>'Startpfad im DFS, wie Z:\Projekte','allow_sort' =>1, 'required'=>1, 'inits'=>array('ajaxurl'=>'plugin//dfsindex//search_path_json.php') )                
-        'path_filter'=>     array('name'=> 'Pfadeinschr&auml;nkung',  'object'=>'text', 'view'=>0, 'notes'=>'Startpfad im DFS, wie Z:\Projekte','allow_sort' =>1, 'required'=>1 )
+        'file_name'	=>    array('name'=> 'Dateiname',  				'object'=>'text', 'view'=>0, 'notes'=>'Suchstring des Dateinamens, nutze "*" als Wildcard','allow_sort' =>1, 'required'=>1 ),                        
+        'dir_name'	=>    array('name'=> 'Pfadeinschr&auml;nkung',  'object'=>'text', 'view'=>0, 'notes'=>'Startpfad im DFS, wie Z:\Projekte','allow_sort' =>1, 'required'=>1 )
         );
         
     VAR $resultTable_col_names = array (
-	    'file_name'	=> array ('name'=>'Dateiname'),
+    	'file_id'		=> array ('name'=>'Datei ID'),
+	    'file_name'		=> array ('name'=>'Dateiname'),
 	    'dir_name'		=> array ('name'=>'Verzeichnis'),
 	    'file_size'		=> array ('name'=>'Gr&ouml;sse'),
 	    'file_mtime'=> array ('name'=>'letzte &Auml;nderung')
@@ -98,6 +99,22 @@ class dfs_forms{
    	function __construct($url) {
 
 		$this->url=$url;
+   	}
+   	
+   	function generate_sha1($dbhandle,$query){
+   		
+   		$dbhandle->selectquery($query);
+   		$result = $dbhandle->result;
+   		$sha1_array = array();
+  
+   		while ($row = $result->fetchArray()) {
+   			$file_id=$row["file_id"];
+   			$file=$row["dir_name"]."/".$row["file_name"];
+   			$sha1_array[$file_id]=sha1_file($file);
+   			echo $file_id." - ".$file." => ".$sha1_array[$file_id];   				
+   			echo "<br>";
+   		}
+
    	}
    
 	function showShortHelp($extraText=""){
@@ -185,7 +202,7 @@ class dfs_forms{
     /**
      * Show results
      *  
-     * @param array $searchValues ('file' => Part of the filename (Searchstring), 'path_filter' => 'Z:\Projekte')
+     * @param array $searchValues ('file' => Part of the filename (Searchstring), 'dir_name' => 'Z:\Projekte')
      * @param object $dbhandle ('link to db')
      * @param str $baseUrl = URL 
      * @return 1 on success
@@ -233,22 +250,24 @@ class dfs_forms{
     	$headerCols=implode(',',$headerDict);
     	
     	// Convert search string to Linux style
-    	$searchValues['path_filter']=pathToLinuxStyle($searchValues['path_filter']);
+    	if (isset($searchValues['dir_name'])) $searchValues['dir_name']=pathToLinuxStyle($searchValues['dir_name']);
     	
     	$query=$dfsdb-> findFiles($searchValues,$headerCols);    	
     	$cnt= $dbhandle->count_results($query);
     	
     	if (!$cnt) {
     		// check, if user forgot "*"
-    		if (strstr($searchValues['file'], $this->WILDCARD)==NULL) {
+    		if (strstr($searchValues['file_name'], $this->WILDCARD)==NULL) {
     			// user did not add an wildcard, try with wildcards
-    			$searchValues['file'] = $this->WILDCARD . $searchValues['file'] . $this->WILDCARD;
-    			echo "Info: automatically added WILDCARDS: ".htmlspecialchars($searchValues['file'])." ...<br>";
+    			$searchValues['file_name'] = $this->WILDCARD . $searchValues['file_name'] . $this->WILDCARD;
+    			echo "Info: automatically added WILDCARDS: ".htmlspecialchars($searchValues['file_name'])." ...<br>";
     			$query= $dfsdb-> findFiles($searchValues,$headerCols);
     			$cnt  = $dbhandle->count_results($query); // query again
+    			echo "Count: ".$cnt;
     		}
     	}
     	
+
     	
     	//htmlShowInfo("Anzahl: ".$cnt);    	
     	
@@ -280,7 +299,11 @@ class dfs_forms{
 			}*/
 			//$this-> auditTab-> table_row($dataArr);
 			//$resultTable-> table_close();
-    		
+			
+			if ($_REQUEST['action']=='sha1'){
+				$this->generate_sha1($dbhandle,$query);
+			}
+			 
 			return 1;    		
     	} else {
     		$cnt=$dbhandle->count_results($dfsdb-> checkPathExist($searchValues));
@@ -319,6 +342,7 @@ class dfs_forms{
     	$headerCols=implode($headerDict);
 
     	switch ($action){
+    		case 'analyze':
     		case 'duplicate':
     			$query=$dfsdb-> findDuplicateFiles(20);
     			break;
@@ -354,13 +378,6 @@ class dfs_forms{
 			$resultTable->show($dbhandle, $showOptions);		        				
 			
     		
-    		/*while ($dbhandle->ReadRowKey()){
-				$row=$dbhandle-> RowData;											
-				$resultTable-> table_row($row);
-			}*/
-			//$this-> auditTab-> table_row($dataArr);
-			//$resultTable-> table_close();
-    		
 			return 1;    		
     	} else {
     		$cnt=$dbhandle->count_results($dfsdb-> checkPathExist($searchValues));
@@ -372,7 +389,7 @@ class dfs_forms{
     
 }
 
-class search_MIP extends MIP_PLUGIN {
+class search_MIP {
 	VAR $ecmdb_handle;
 	VAR $url;
 	VAR $indexStatus=array();
@@ -385,13 +402,17 @@ class search_MIP extends MIP_PLUGIN {
 		//$this->_infox['ecmwork']  = 1;
 		
 		//$this->_ecmdb_handle = new class_db($_SESSION['config']['ecm-work']);
-		$this->url=$this->_getPluginUrl();
+		//$this->url=$this->_getPluginUrl();
+		$this->url="index.php?debug=1";
+		$this->config=	$_SESSION['config'];
+		$this->ecmdb_handle = new class_db($this->config['dfsindex']);
 	}
+	
 	
 	function getIndexStatus(){
 		$status=array();
 		
-		$table_name=$this->config["mip.work"]["global_table"];
+		$table_name=$this->config["dfsindex"]["global_table"];
 		
 		$global_keyArr = array(
 			'plugin'	=>	"dfsindex",
@@ -399,7 +420,7 @@ class search_MIP extends MIP_PLUGIN {
 		);
 		try{
 			$this->ecmdb_handle-> selectKeyVal($table_name,$global_keyArr);
-			$this->ecmdb_handle->ReadRowKey();			
+			$this->ecmdb_handle->ReadRow();			
 			$status=json_decode($this->ecmdb_handle->RowData['data'],true);
 			
 		}catch (Exception $e){
@@ -423,7 +444,7 @@ class search_MIP extends MIP_PLUGIN {
 		
 		if (file_exists($logfile) and is_writable($logfile)){
 			
-			$searchstring = $parx['file']."\t".$parx['path_filter'];
+			$searchstring = $parx['file_name']."\t".$parx['dir_name'];
 			$logrow = date($log_format)."\t".$_SERVER['REMOTE_ADDR']."\t".$_SESSION['user']['user']."\t".$searchstring."\n";
 			error_log($logrow, 3, $logfile);
 			
@@ -442,8 +463,8 @@ class search_MIP extends MIP_PLUGIN {
 	private function _prepParameters($parx) {
 		
 		// this is important !!!
-		$parx['file'] = trim($parx['file']);
-		$parx['path_filter'] = trim($parx['path_filter']);
+		if (isset($parx['file_name'])) $parx['file_name'] = trim($parx['file_name']);
+		if (isset($parx['dir_name'])) $parx['dir_name'] = trim($parx['dir_name']);
 		
 		return $parx;
 	}
@@ -451,10 +472,13 @@ class search_MIP extends MIP_PLUGIN {
 	
 	function run() {
 		$indexStatus=array();
-		$this->config=	$_SESSION['config'];
-		$this->ecmdb_handle = new class_db($this->config['mip.work']);
+
 		
 		$dfsdb = new dfsindex_db_manage();
+		
+		$cnt=$this->ecmdb_handle->count_results(" file_name from atj_dfs_index");
+
+		showDebug( $cnt, "Anzahl: ");
 
 		//get and show Indexstatus:
 		$indexStatus=$this->getIndexStatus();
@@ -470,8 +494,10 @@ class search_MIP extends MIP_PLUGIN {
 		
 		if ($go==2) {
 			$parx = $_SESSION['formvars']['search_MIP']['parx'];
+			showDebug($parx, "parx");
 		}
 		if ($go==1) {
+			//	$val='<a href=index.php?parx[file]="'.$rowData['file_name'].'"&go=1>'.$rowData[$key].'</a>';
 			$parx = $_REQUEST['parx'];
 		}
 		if ($go>0){
@@ -481,10 +507,22 @@ class search_MIP extends MIP_PLUGIN {
 		$parx = $this->_prepParameters($parx);
 		
 		switch ($action){
+			case 'analyze':
+			
+				//$this->generate_sha1();
+			
+				break;			
+			case 'sha1':
+				print_r($parx);
+				
+				
+				break;
 			case 'duplicate':
+				
 				$dfs-> showSpecialResults($action, $this->ecmdb_handle,$this->url);
 				break;
 			default:
+				
 				$dfs->search_form($parx);				
 				break;				
 		}

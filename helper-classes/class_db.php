@@ -28,20 +28,16 @@
    $sqlobj->runquery($sqlsel);
  */
 class class_db {
-	
     VAR $db_link;    
-    VAR $db_type;
     VAR $sortby;
     VAR $result;  // result handle
     VAR $RowData; // array
- 
 
 
     function __construct($db_data=NULL) {
         
         if (is_array($db_data)) {
         	try {
-        		$this->db_type=$db_data['dbtype'];
             	$this->connect($db_data);
         	} catch (Exception $e)
         	{
@@ -55,44 +51,36 @@ class class_db {
      * @param type $db_data = array () or empty, dann wird Session Variable verwendet (default)
      */
     function connect($db_data){       
-        if (!$db_data) $db_data = $_SESSION['config'];                  
+        if (!$db_data) $db_data = $_SESSION['config'];          
         
-        if ($this->db_type == "mysql"){
-        	$this->db_link = new mysqli($db_data["dbhost"], $db_data["dbuser"], $db_data["dbpass"], $db_data["dbname"]); 
-        	if (!$this->db_link->set_charset($this->db_link, $db_data["dbencoding"])) throw new Exception('Database Characterset"'.$db_data["dbencoding"].'" not found.' );
-        	if ($this->db_link->connect_errno) {
-        		throw new RuntimeException("Connect failed: %s\n". $this->db_link->connect_error);
-        	}
+        $this->db_link = mysqli_connect($db_data["dbhost"], $db_data["dbuser"], $db_data["dbpass"], $db_data["dbname"]);
+        if (mysqli_connect_errno()) { 
+            throw new RuntimeException("Connect failed: %s\n". mysqli_connect_error());             
         }
         
-        if ($this->db_type == "sqlite"){
-        	$this->db_link = new SQLite3('dfsindex_db');
-        	if (!$this->db_link) {
-        		throw new RuntimeException("Connect failed: %s\n". $this->db_link->connect_error);
-        	}
-        
+        if ($this->db_link)
+        {            
+            if (!mysqli_select_db($this->db_link, $db_data["dbname"])) throw new Exception('Database "'.$db_data["dbname"].'" not found.' );
+            if (!mysqli_set_charset($this->db_link, $db_data["dbencoding"])) throw new Exception('Database Characterset"'.$db_data["dbencoding"].'" not found.' );
+                     
         }         
-        
-    }
-    
-    /**
-     * 
-     * @param string $stat ("BEGIN" or "COMMIT")
-     */
-    public function Transaction($stat){
-    	$this->db_link->query($stat." TRANSACTION");
     }
     
     public function runquery($string)
     {
-    	
        $this->result = NULL;
-       $this->result = $this->db_link->query($string);
+       $this->result = mysqli_query($this->db_link,$string);
+       
        if (!$this->result) {          
            throw new Exception('SQL Anweisung: '.$string.' konnte nicht durchgef&uuml;hrt werden.');
            
        }
-    }        
+    }    
+    
+    public function getLastInsertID(){
+    	return mysqli_insert_id($this->db_link);
+    }
+    
     
     public function selectquery($sqlsel) {
         $sqlFull = 'select '.$sqlsel.';';
@@ -114,7 +102,7 @@ class class_db {
              if ($value==NULL) {
                  $value_new = '= NULL';
              } else {
-                $value_new = '=\''.$this->db_link->escapeString($value).'\'';
+                $value_new = '=\''.$this->db_link->escape_string($value).'\'';
              }
              $sqlFull   .= $komma . $key . $value_new;
              $komma = ', ';
@@ -124,7 +112,7 @@ class class_db {
         $komma = NULL;
         foreach ($whereArray as $key=>$value)  {
              
-             $value_new = '=\''. $this->db_link->escapeString($value).'\'';
+             $value_new = '=\''. $this->db_link->escape_string($value).'\'';
              $sqlFull   .= $komma . $key . $value_new;
              $komma = ' and ';
         }
@@ -153,7 +141,7 @@ class class_db {
              	//TODO: Testen!! -> Unittest
                  $value_new = "(". $key." is NULL or $key=='' )";
              } else {
-                $value_new = $key . '=\''. $this->db_link->escapeString($value).'\'';
+                $value_new = $key . '=\''. $this->db_link->escape_string($value).'\'';
              }
              $sqlFull   .= $komma . $value_new ;
              $komma = ' and ';
@@ -171,14 +159,7 @@ class class_db {
     public function insert_row_str($sqlstring) {
         $sqlFull = 'INSERT INTO '.$sqlstring;
         $this->runquery($sqlFull);
-        
-        if ($this->db_type == "mysql"){
-        	return $this->db_link->insert_id;
-        }
-        if ($this->db_type == "sqlite"){
-        	return $this->db_link->lastInsertRowID();
-        }
-                        
+        return mysqli_insert_id($this->db_link);        
     }
     
     /**
@@ -189,9 +170,8 @@ class class_db {
     public function insertKeyVal($table, $valArray) {
         $sqlFull='';
         $komma = NULL;
-
         foreach ($valArray as $key => $value)  {
-            $valArray[$key]= $this->db_link->escapeString($value);        	
+                 $valArray[$key]= $this->db_link->escape_string ($value);
         }
         
         $columns =  implode(', ', array_keys($valArray));        
@@ -202,9 +182,9 @@ class class_db {
         return $this->insert_row_str($sqlFull);        
     }    
     
-    public function truncateTable($table){
+    public function trucateTable($table){
     	$sqlFull='';
-    	$sqlFull='delete from '.$table.';';
+    	$sqlFull='truncate '.$table.';';
     	$this->runquery($sqlFull);
     }
     
@@ -215,65 +195,70 @@ class class_db {
             throw new Exception('no result handler' );
         }
         
-        if ($this->RowData = $this->result->fetchArray()) {
-        	return 1;
+        if ($this->RowData = mysqli_fetch_row($this->result)) {
+            return 1;
         } else {
-        	return 0;
+            return 0;
         }
         
     }
-
+    
+    public function ReadRowKey() {
+        
+        $this->RowData = NULL;  
+        
+        if (!$this->result) {
+            throw new Exception('no result handler' );
+        }
+        $this->RowData=mysqli_fetch_assoc($this->result);
+        
+        if ($this->RowData) {
+            return 1;
+        } else {
+            return 0;
+        }
+        
+    }
+    
     /**
      * read row by ID or KEY
      * @param string $method 'ID', 'KEY'
      * @return data exists : 0,1
      * @throws Exception
      */
-    public function ReadRowOpt($method="KEY") {
-    
-    	$this->RowData = NULL;
-    
-    	if (!$this->result) {
-    		throw new Exception('no result handler' );
-    	}
-    
-    	if ($method!='ID' and $method!='KEY' ) {
-    		throw new Exception('method invalid.' );
-    	}
-    
-    	if ($method=='KEY') {
-    		$this->RowData = $this->result->fetchArray(SQLITE3_ASSOC);
-    	} else {
-    		$this->RowData = $this->result->fetchArray(SQLITE3_NUM);
-    	}
-    
-    
-    	if ($this->RowData) {
-    		return 1;
-    	} else {
-    		return 0;
-    	}
-    
+ 	public function ReadRowOpt($method="KEY") {
+        
+        $this->RowData = NULL;  
+        
+        if (!$this->result) {
+            throw new Exception('no result handler' );
+        }
+        
+        if ($method!='ID' and $method!='KEY' ) {
+        	throw new Exception('method invalid.' );
+        }
+        
+        if ($method=='KEY') {
+        	$this->RowData = mysqli_fetch_assoc($this->result);
+        } else {
+        	$this->RowData = mysqli_fetch_row($this->result);
+        }
+        
+        
+        if ($this->RowData) {
+            return 1;
+        } else {
+            return 0;
+        }
+        
     }
     
     public function countLastResults(){
-    	if (!$this->result) {
-    		throw new Exception('no result handler' );
-    	}
-    	
-    	if (!$this->RowData){
-    		$this->RowData = $this->result->fetchArray();
-    	}
-    	$this->result->
-    	$this->ReadRow();
-    	echo "TEST:";
-    	print_r($this->RowData);
-    	die();
-    	return count($this->RowData);
+    	return mysqli_num_rows($this->result);
     }
     
 	public function count_results($sqlsel){		
-		$this->selectquery('count(1),'.$sqlsel);
+		$this->selectquery('count(1) '.$sqlsel);
    		$this->ReadRow();
         $cnt   = $this->RowData[0]; // get data by column ID
         return $cnt;

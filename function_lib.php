@@ -1,5 +1,24 @@
 <?php 
+/**
+ *
+ * @param type $input
+ * @param type $text
+ * @param type $minDebLev
+ * @return type
+ */
+function showDebug($input, $debugHint, $minDebLev=1){
+	if ($_SESSION['sessvars']['debug.val']<$minDebLev) return;
 
+	echo 'DEBUG: <b>'.$debugHint.': </b>';
+	if (is_array($input)) {
+
+		echo '<pre align="left">';
+		print_r($input);
+		echo '</pre>';
+	} else {
+		echo $input. "<br />\n";
+	}
+}
 /**
  * 
  * Convert linux-Path to Windows, e.g. /dfs/Group -> Z:\Group

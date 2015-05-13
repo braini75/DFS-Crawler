@@ -15,6 +15,7 @@ last_update TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
 	$result = $db->query('select * from atj_dfs_index');
 	while ($row = $result->fetchArray()) {
 		var_dump($row);
+		echo "<br>";
 	} 
 } else {
     die($sqliteerror);
